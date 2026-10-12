@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>명단 위치도</title>
+<title>위치 약도 생성기</title>
 <meta name="description" content="엑셀·네이버 지도 목록을 붙여 넣으면 이름표 달린 핀 지도를 만들어 A3·A4로 인쇄합니다.">
 <link rel="icon" href="data:,">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -120,12 +120,12 @@ body.print-mode .tools { position: fixed; }
 <div class="app">
   <aside class="side">
     <div>
-      <h1>명단 위치도</h1>
+      <h1>위치 약도 생성기</h1>
       <p class="lead">명단을 붙여 넣으면 이름표 달린 핀 지도를 만들어 A3·A4로 인쇄해요.</p>
     </div>
 
     <label class="field"><span>지도 제목</span>
-      <input type="text" id="title" value="명단 위치도">
+      <input type="text" id="title" value="위치 약도">
     </label>
 
     <label class="field"><span>명단</span>
@@ -189,7 +189,7 @@ const HOME_COLOR = '#c2185b';
 const PAPER = { A3: { w: 420, h: 297, mapW: 262, listFs: 8.6 }, A4: { w: 297, h: 210, mapW: 182, listFs: 7.2 } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let S = { title: '명단 위치도', input: '', rows: [], home: null, homeName: '', homeAddr: '', faded: true, paper: 'A3' };
+let S = { title: '위치 약도', input: '', rows: [], home: null, homeName: '', homeAddr: '', faded: true, paper: 'A3' };
 try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) S = Object.assign(S, saved); } catch (e) { /* 저장소를 못 쓰면 새로 시작 */ }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* 무시 */ } }
 
@@ -569,7 +569,7 @@ async function run() {
   // 이미 찾은 곳은 그대로 둔다 (직접 옮긴 핀 유지)
   const old = new Map(S.rows.map((r) => [r.name + '|' + r.addr, r]));
   S.rows = rows.map((r) => { const o = old.get(r.name + '|' + r.addr); return o && o.lat != null ? { ...r, lat: o.lat, lon: o.lon, prec: o.prec } : { ...r, lat: null, lon: null, prec: null }; });
-  S.title = $('title').value.trim() || '명단 위치도';
+  S.title = $('title').value.trim() || '위치 약도';
   S.homeName = $('homeName').value.trim();
   S.homeAddr = $('homeAddr').value.trim();
   $('go').disabled = true;
