@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>명단 위치도</title>
+<meta name="description" content="엑셀·네이버 지도 목록을 붙여 넣으면 이름표 달린 핀 지도를 만들어 A3·A4로 인쇄합니다.">
+<link rel="icon" href="data:,">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* 왼쪽 작업판 + 오른쪽 지도. '인쇄 화면'에서는 종이 크기(mm) 그대로 제목·지도·목록을 배치한다 */
+:root {
+  --ink: #17202c;
+  --ink-2: #4a5566;
+  --ink-3: #7c8696;
+  --line: #dfe3ea;
+  --panel: #f4f6f9;
+  --paper: #ffffff;
+  --accent: #1f5fbf;
+  --warn: #b45309;
+  --warn-bg: #fff4e5;
+  --ok: #1f7a46;
+  --ok-bg: #e8f6ee;
+  --bad: #b42318;
+  --bad-bg: #fdecea;
+  --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font: 14px/1.5 var(--font); color: var(--ink); background: var(--paper); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { display: grid; grid-template-columns: minmax(320px, 400px) 1fr; height: 100%; }
+.side { display: flex; flex-direction: column; gap: 14px; padding: 16px; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; }
+.side h1 { margin: 0; font-size: 19px; letter-spacing: -0.02em; }
+.side .lead { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 12px; font-weight: 700; color: var(--ink-2); letter-spacing: 0.02em; }
+.field small { color: var(--ink-3); font-size: 12px; }
+input[type=text], textarea, select { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+textarea { min-height: 150px; resize: vertical; font-size: 13px; line-height: 1.45; }
+.row2 { display: grid; grid-template-columns: 1fr 1.6fr; gap: 6px; }
+.btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.btn { padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line); background: #fff; font-weight: 600; white-space: nowrap; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.small { padding: 5px 9px; font-size: 12px; }
+.status { font-size: 13px; color: var(--ink-2); min-height: 20px; }
+.bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+.summary { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.chip { padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: #fff; overflow: hidden; }
+.list .grp { padding: 7px 10px; font-size: 12px; font-weight: 800; background: #fafbfc; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 6px; }
+.item { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; align-items: center; padding: 7px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.item:last-child { border-bottom: 0; }
+.item:hover { background: #f7f9fc; }
+.item .nm { font-weight: 700; font-size: 13px; }
+.item .ad { font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; }
+.badge { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.badge.exact, .badge.manual, .badge.name { background: var(--ok-bg); color: var(--ok); }
+.badge.near { background: var(--warn-bg); color: var(--warn); }
+.badge.none { background: var(--bad-bg); color: var(--bad); }
+.note { font-size: 12px; color: var(--ink-3); margin: 0; }
+.mapbox { position: relative; min-width: 0; }
+#map { position: absolute; inset: 0; background: #eef1f4; }
+.tools { position: absolute; top: 12px; right: 12px; z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+.tools label { display: flex; align-items: center; gap: 5px; padding: 6px 10px; background: #fff; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; white-space: nowrap; }
+.tools select { width: auto; padding: 2px 4px; border: 0; }
+.faded #map img:not([src^="data:"]) { filter: grayscale(0.85) brightness(1.06) contrast(0.92); }
+.faded #map .leaflet-tile-pane { filter: grayscale(0.85) brightness(1.06) contrast(0.92); }
+
+/* 이름표 */
+.lbl { white-space: nowrap; font-weight: 800; font-size: 12.5px; line-height: 16px; letter-spacing: -0.02em; pointer-events: none;
+  text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0 2px 0 #fff, 0 -2px 0 #fff, 2px 0 0 #fff, -2px 0 0 #fff; }
+.leaflet-div-icon.pinwrap, .leaflet-div-icon.lblwrap { background: none; border: 0; }
+
+/* 인쇄 화면 */
+.sheet-head, .sheet-list { display: none; }
+body.print-mode .app { display: block; height: auto; }
+body.print-mode .side { display: none; }
+body.print-mode .mapbox { display: grid; grid-template-columns: var(--map-w) 1fr; grid-template-rows: auto var(--map-h); column-gap: 7mm; row-gap: 3mm;
+  width: var(--sheet-w); padding: 8mm; margin: 0 auto; background: #fff; }
+body.print-mode #map { position: relative; inset: auto; grid-column: 1; grid-row: 2; width: var(--map-w); height: var(--map-h); border: 0.3mm solid #9aa4b2; }
+body.print-mode .sheet-head { display: block; grid-column: 1 / -1; grid-row: 1; }
+body.print-mode .sheet-list { display: block; grid-column: 2; grid-row: 2; min-width: 0; overflow: hidden; }
+body.print-mode .tools { position: fixed; }
+.sheet-head h2 { margin: 0; font-size: 20pt; letter-spacing: -0.02em; }
+.sheet-head p { margin: 1mm 0 0; color: var(--ink-2); font-size: 9.5pt; }
+.sheet-list { font-size: 8.6pt; column-gap: 5mm; }
+.sheet-list .g { break-inside: avoid; margin: 0 0 2.5mm; }
+.sheet-list .gh { display: flex; align-items: center; gap: 1.5mm; font-weight: 800; font-size: 10.5pt; margin-bottom: 1mm; }
+.sheet-list .r { display: grid; grid-template-columns: 6mm auto 1fr; gap: 1.5mm; align-items: baseline; padding: 0.5mm 0; break-inside: avoid; }
+.sheet-list .no { display: inline-grid; place-items: center; width: 4.6mm; height: 4.6mm; border-radius: 50%; color: #fff; font-weight: 800; font-size: 7pt; }
+.sheet-list .nm { font-weight: 800; white-space: nowrap; }
+.sheet-list .ad { color: var(--ink-2); font-size: 0.88em; overflow-wrap: anywhere; }
+.sheet-list .src { margin-top: 2mm; color: var(--ink-3); font-size: 6.5pt; }
+
+@media print {
+  .tools { display: none !important; }
+  body.print-mode .mapbox { padding: 0; margin: 0; }
+}
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 70vh; height: auto; }
+  .side { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<style id="page-size">@page { size: 420mm 297mm; margin: 0; }</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div>
+      <h1>명단 위치도</h1>
+      <p class="lead">명단을 붙여 넣으면 이름표 달린 핀 지도를 만들어 A3·A4로 인쇄해요.</p>
+    </div>
+
+    <label class="field"><span>지도 제목</span>
+      <input type="text" id="title" value="명단 위치도">
+    </label>
+
+    <label class="field"><span>명단</span>
+      <textarea id="input" spellcheck="false" placeholder="엑셀에서 '구분 · 이름 · 주소' 칸을 복사해 붙여 넣거나, 네이버 지도 목록을 그대로 붙여 넣으세요.&#10;&#10;예)&#10;새마을금고	서전주새마을금고	전북 전주시 완산구 백제대로 391&#10;신협	서신신협	전북 전주시 완산구 서신로 24"></textarea>
+      <small>엑셀 복사(구분·이름·주소 또는 이름·주소), 줄마다 '이름, 주소', 네이버 지도 목록 복사를 읽어요. 네이버 목록은 '-----' 줄로 묶음을 나눠요.</small>
+    </label>
+    <div class="btns">
+      <label class="btn small" for="file">엑셀·CSV 파일 열기</label>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv,.txt" hidden>
+      <button class="btn small" id="sample" type="button">예시 넣기</button>
+      <button class="btn small" id="clear" type="button">지우기</button>
+    </div>
+
+    <div class="field"><span>기준점 (선택)</span>
+      <div class="row2">
+        <input type="text" id="homeName" placeholder="이름 (예: 우리 회사)">
+        <input type="text" id="homeAddr" placeholder="주소 (예: 전주시 완산구 홍산로 254)">
+      </div>
+      <small>별표로 따로 표시해요.</small>
+    </div>
+
+    <div class="btns">
+      <button class="btn primary" id="go" type="button">지도에 찍기</button>
+      <button class="btn" id="toPrint" type="button" disabled>인쇄 화면으로</button>
+    </div>
+    <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+    <div class="status" id="status" role="status">명단을 넣고 '지도에 찍기'를 누르세요.</div>
+    <div class="summary" id="summary"></div>
+    <div class="list" id="list" hidden></div>
+    <p class="note">주황색 '확인 필요'는 길이나 동 단위로만 찾은 곳이에요. 지도에서 핀을 끌어 정확한 자리로 옮기면 '직접 지정'이 돼요.</p>
+    <p class="note" id="privacy"></p>
+  </aside>
+
+  <section class="mapbox" id="mapbox">
+    <div class="sheet-head"><h2 id="sheetTitle"></h2><p id="sheetSub"></p></div>
+    <div id="map"></div>
+    <div class="sheet-list" id="sheetList"></div>
+    <div class="tools">
+      <label><input type="checkbox" id="faded" checked> 바탕 연하게</label>
+      <label id="paperCtl" hidden>종이 <select id="paper"><option value="A3">A3 가로</option><option value="A4">A4 가로</option></select></label>
+      <button class="btn small" id="relabel" type="button">이름표 다시 배치</button>
+      <button class="btn small primary" id="doPrint" type="button" hidden>인쇄</button>
+      <button class="btn small" id="backEdit" type="button" hidden>편집으로</button>
+    </div>
+  </section>
+</div>
+
+<script>
+'use strict';
+// 카카오 지도 JavaScript 키 (등록한 사이트에서만 작동하는 공개용 키). 비어 있거나 못 불러오면 OpenStreetMap 으로 동작
+const KAKAO_KEY = '';
+
+const $ = (id) => document.getElementById(id);
+const KEY = 'listmap:v1';
+const STYLE = [
+  { c: '#1c64c8', shape: 'circle' }, { c: '#e8590c', shape: 'square' }, { c: '#2b9348', shape: 'triangle' },
+  { c: '#7b2cbf', shape: 'diamond' }, { c: '#c9184a', shape: 'circle' }, { c: '#0f766e', shape: 'square' },
+  { c: '#a16207', shape: 'triangle' }, { c: '#334155', shape: 'diamond' },
+];
+const HOME_COLOR = '#c2185b';
+const PAPER = { A3: { w: 420, h: 297, mapW: 262, listFs: 8.6 }, A4: { w: 297, h: 210, mapW: 182, listFs: 7.2 } };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+let S = { title: '명단 위치도', input: '', rows: [], home: null, homeName: '', homeAddr: '', faded: true, paper: 'A3' };
+try { const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) S = Object.assign(S, saved); } catch (e) { /* 저장소를 못 쓰면 새로 시작 */ }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* 무시 */ } }
+
+// ───────── 명단 읽기 ─────────
+const STATUS_WORDS = /^(영업\s*중|영업\s*전|영업\s*종료|곧\s*영업\s*종료|휴게\s*시간|브레이크\s*타임|휴무|정기\s*휴무)\s*/;
+function guessGroup(name, fallback) {
+  const rules = [['새마을금고', /새마을금고/], ['신협', /신협|신용협동조합/], ['농협', /농협|축협|농업협동조합/], ['수협', /수협/],
+    ['산림조합', /산림조합/], ['우체국', /우체국/], ['은행', /은행/]];
+  for (const [g, re] of rules) if (re.test(name)) return g;
+  return fallback || '기타';
+}
+function tidyName(n) { return n.replace(/\s+/g, ' ').replace(/\s*(본점|지점|출장소)$/, ' $1').trim(); }
+function dedupeName(line) {
+  // 네이버 목록 첫 줄: "이름이름분류" → 이름, 분류
+  const s = line.trim();
+  for (let k = Math.floor(s.length / 2); k >= 2; k--) {
+    if (s.slice(0, k) === s.slice(k, 2 * k)) return { name: s.slice(0, k).trim(), cat: s.slice(2 * k).trim() };
+  }
+  return { name: s, cat: '' };
+}
+function parseNaver(text) {
+  const rows = [];
+  let block = 0;
+  for (const g of text.split(/\n\s*-{3,}\s*(?:\n|$)/)) {
+    block++;
+    const chunks = g.split(/\n\s*\n/).map((c) => c.split('\n').map((l) => l.trim()).filter(Boolean)).filter((c) => c.length >= 2);
+    for (const c of chunks) {
+      const { name, cat } = dedupeName(c[0]);
+      const lines = c.slice(1).map((l) => l.replace(STATUS_WORDS, ''));
+      const addr = lines.find((l) => /\d/.test(l) && /(시|군|구|동|로|길|리|가)\s/.test(l)) || lines[0];
+      rows.push({ name: tidyName(name), addr: addr.trim(), group: '', block, cat });
+    }
+  }
+  // 묶음(-----)마다 이름으로 그룹 이름을 정한다
+  const byBlock = {};
+  for (const r of rows) (byBlock[r.block] = byBlock[r.block] || []).push(r);
+  for (const list of Object.values(byBlock)) {
+    const votes = {};
+    for (const r of list) { const g = guessGroup(r.name, r.cat); votes[g] = (votes[g] || 0) + 1; }
+    const top = Object.entries(votes).sort((a, b) => b[1] - a[1])[0][0];
+    for (const r of list) r.group = top;
+  }
+  return rows.map(({ name, addr, group }) => ({ name, addr, group }));
+}
+function parseTable(cells) {
+  // cells: 2차원 배열. 머리글이 있으면 그 이름으로, 없으면 칸 수로 판단
+  const clean = cells.map((r) => r.map((c) => String(c ?? '').trim())).filter((r) => r.some(Boolean));
+  if (!clean.length) return [];
+  const head = clean[0].map((h) => h.replace(/\s/g, ''));
+  const find = (re) => head.findIndex((h) => re.test(h));
+  let iName = find(/^(이름|명칭|상호|지점|지점명|기관|기관명|본점|점포|업체|업체명|거래처|조합|조합명|금고|금고명)/);
+  let iAddr = find(/주소|소재지/);
+  let iGroup = find(/^(구분|그룹|회사|분류|종류|업종|기관구분)/);
+  let body = clean;
+  if (iName >= 0 && iAddr >= 0) body = clean.slice(1);
+  else {
+    const n = Math.max(...clean.map((r) => r.length));
+    if (n >= 3) { iGroup = 0; iName = 1; iAddr = 2; } else { iGroup = -1; iName = 0; iAddr = 1; }
+  }
+  return body.filter((r) => r[iName] && r[iAddr]).map((r) => ({
+    name: tidyName(r[iName]), addr: r[iAddr], group: iGroup >= 0 && r[iGroup] ? r[iGroup] : guessGroup(r[iName]),
+  }));
+}
+function parseInput(text) {
+  const t = text.replace(/\r/g, '').trim();
+  if (!t) return [];
+  if (t.includes('\t')) return parseTable(t.split('\n').map((l) => l.split('\t')));
+  const lines = t.split('\n').filter((l) => l.trim());
+  if (!/\n\s*\n/.test(t) && lines.filter((l) => l.includes(',')).length >= lines.length * 0.8) {
+    return parseTable(lines.map((l) => { const i = l.indexOf(','); return [l.slice(0, i), l.slice(i + 1)]; }));
+  }
+  return parseNaver(t);
+}
+function cleanAddr(a) {
+  // 지번·도로명 번호 뒤에 붙은 건물 이름·층수는 뺀다
+  const s = a.replace(STATUS_WORDS, '').replace(/\(.*?\)/g, ' ').replace(/,.*$/, '').replace(/\s+/g, ' ').trim();
+  const m = s.match(/^(.*?\s(?:산\s?)?\d+(?:-\d+)?)(?:\s|$)/);
+  return m ? m[1].trim() : s;
+}
+function shortAddr(a) { return cleanAddr(a).replace(/^(전북특별자치도|전라북도|전북|서울특별시|서울|경기도|[가-힣]+광역시|[가-힣]+특별자치시|[가-힣]+특별자치도|[가-힣]+도)\s+/, ''); }
+const norm = (s) => s.replace(/\s|본점|\(.*?\)/g, '');
+function dist(a, b) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * toR, dLon = (b.lon - a.lon) * toR;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function sameName(a, core) { const x = norm(a); return x && (x === core || (x.length >= 3 && (x.includes(core) || core.includes(x)))); }
+function cityOf(addr) { return (addr.match(/([가-힣]+시)(?=\s|$)/) || [])[1] || (addr.match(/([가-힣]+군)(?=\s|$)/) || [])[1] || ''; }
+
+// ───────── 지도 엔진 (카카오 우선, 안 되면 OpenStreetMap) ─────────
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+}
+function loadCss(href) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.appendChild(l); }
+const geoCache = (() => { try { return JSON.parse(localStorage.getItem(KEY + ':geo') || '{}'); } catch (e) { return {}; } })();
+function saveCache() { try { localStorage.setItem(KEY + ':geo', JSON.stringify(geoCache)); } catch (e) { /* 무시 */ } }
+
+function kakaoEngine() {
+  const k = window.kakao.maps;
+  const el = $('map');
+  const map = new k.Map(el, { center: new k.LatLng(36.35, 127.8), level: 13 });
+  const zoom = new k.ZoomControl();
+  map.addControl(zoom, k.ControlPosition.LEFT);
+  const geocoder = new k.services.Geocoder();
+  const places = new k.services.Places();
+  const OK = k.services.Status.OK;
+  const ll = (p) => new k.LatLng(p.lat, p.lon);
+  const svgUri = (svg) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  const cached = async (key, fn) => { if (geoCache[key]) return geoCache[key]; const v = await fn(); geoCache[key] = v; saveCache(); return v; };
+  const addr = (q) => cached('k:a:' + q, () => new Promise((res) => geocoder.addressSearch(q, (r, st) => res(st === OK
+    ? r.map((x) => ({ lat: +x.y, lon: +x.x, exact: /_ADDR$/.test(x.address_type) })) : []))));
+  const keyword = (q, near) => cached('k:k:' + q + (near ? `@${near.lat.toFixed(3)},${near.lon.toFixed(3)}` : ''),
+    () => new Promise((res) => places.keywordSearch(q, (r, st) => res(st === OK ? r.map((x) => ({ lat: +x.y, lon: +x.x, name: x.place_name })) : []),
+      near ? { location: ll(near), radius: 3000, sort: k.services.SortBy.DISTANCE } : {})));
+  return {
+    name: 'kakao',
+    privacy: '명단은 이 브라우저에만 저장돼요. 위치를 찾을 때 주소와 이름이 카카오 지도 검색으로 전송돼요.',
+    async locate(name, addrRaw) {
+      const a = cleanAddr(addrRaw || '');
+      let base = null, prec = 'none';
+      if (a) {
+        const r = await addr(a);
+        const ex = r.find((x) => x.exact);
+        if (ex) { base = ex; prec = 'exact'; } else if (r.length) { base = r[0]; prec = 'near'; }
+      }
+      if (prec === 'exact' || !name) return base ? { ...base, prec } : { prec: 'none' };
+      const core = norm(name);
+      const q = (name.replace(/\s*본점$/, '') + ' ' + (base ? '' : cityOf(a))).trim();
+      const n = (await keyword(q, base)).filter((x) => sameName(x.name, core));
+      const pick = base ? n.find((x) => dist(x, base) < 3000) : n[0];
+      if (pick) return { lat: pick.lat, lon: pick.lon, prec: 'name' };
+      return base ? { ...base, prec } : { prec: 'none' };
+    },
+    size: () => ({ x: el.clientWidth, y: el.clientHeight }),
+    toPoint: (p) => { const q = map.getProjection().containerPointFromCoords(ll(p)); return { x: q.x, y: q.y }; },
+    toLatLon: (x, y) => { const c = map.getProjection().coordsFromContainerPoint(new k.Point(x, y)); return { lat: c.getLat(), lon: c.getLng() }; },
+    pin(p, svg, size, onDrag) {
+      const m = new k.Marker({ position: ll(p), image: new k.MarkerImage(svgUri(svg), new k.Size(size, size), { offset: new k.Point(size / 2, size / 2) }), draggable: true, zIndex: 5, title: p.title || '' });
+      m.setMap(map);
+      k.event.addListener(m, 'dragend', () => { const q = m.getPosition(); onDrag({ lat: q.getLat(), lon: q.getLng() }); });
+      return { remove: () => m.setMap(null), pos: () => { const q = m.getPosition(); return { lat: q.getLat(), lon: q.getLng() }; } };
+    },
+    label(p, html) {
+      const o = new k.CustomOverlay({ position: ll(p), content: html, xAnchor: 0, yAnchor: 0, zIndex: 3, clickable: false });
+      o.setMap(map);
+      return { remove: () => o.setMap(null) };
+    },
+    line(a, b) {
+      const l = new k.Polyline({ path: [ll(a), ll(b)], strokeWeight: 1, strokeColor: '#6b7280', strokeOpacity: 1 });
+      l.setMap(map);
+      return { remove: () => l.setMap(null) };
+    },
+    fit(pts) { const b = new k.LatLngBounds(); pts.forEach((p) => b.extend(ll(p))); map.setBounds(b, 50, 50, 50, 50); },
+    focus(p) { map.setLevel(Math.min(map.getLevel(), 3)); map.setCenter(ll(p)); },
+    center() { const c = map.getCenter(); return { lat: c.getLat(), lon: c.getLng() }; },
+    relayout() { map.relayout(); },
+    onIdle(fn) { k.event.addListener(map, 'idle', fn); },
+    printMode(on) { if (on) map.removeControl(zoom); else map.addControl(zoom, k.ControlPosition.LEFT); },
+  };
+}
+
+async function leafletEngine() {
+  loadCss('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css');
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');
+  const map = L.map('map', { zoomSnap: 0.25, zoomDelta: 0.5 });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '지도 © OpenStreetMap contributors' }).addTo(map);
+  map.setView([36.35, 127.8], 7);
+  let lastCall = 0;
+  async function nominatim(q) {
+    const key = 'o:' + q;
+    if (geoCache[key]) return geoCache[key];
+    const wait = lastCall + 1100 - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastCall = Date.now();
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&countrycodes=kr&accept-language=ko&q=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error('위치 검색 서버 응답 ' + r.status);
+    const j = (await r.json()).map((x) => ({ lat: +x.lat, lon: +x.lon, name: x.name || '', hn: (x.address && x.address.house_number) || '' }));
+    geoCache[key] = j; saveCache();
+    return j;
+  }
+  return {
+    name: 'osm',
+    privacy: '명단은 이 브라우저에만 저장돼요. 위치를 찾을 때 주소와 이름이 OpenStreetMap 검색(Nominatim)으로 전송돼요.',
+    async locate(name, addrRaw) {
+      const a = cleanAddr(addrRaw || '');
+      const num = (a.match(/\s(\d+(?:-\d+)?)$/) || [])[1] || '';
+      let base = null, prec = 'none';
+      if (a) {
+        const r = await nominatim(a);
+        if (r.length) { base = r.find((x) => x.hn && x.hn === num) || r[0]; prec = base.hn && base.hn === num ? 'exact' : 'near'; }
+      }
+      if (prec === 'exact' || !name) return base ? { lat: base.lat, lon: base.lon, prec } : { prec: 'none' };
+      const core = norm(name);
+      const n = (await nominatim((name.replace(/\s*본점$/, '') + ' ' + cityOf(a)).trim())).filter((x) => sameName(x.name, core));
+      const pick = base ? n.find((x) => dist(x, base) < 1500) : (n.length === 1 ? n[0] : null);
+      if (pick) return { lat: pick.lat, lon: pick.lon, prec: base ? 'name' : 'near' };
+      return base ? { lat: base.lat, lon: base.lon, prec } : { prec: 'none' };
+    },
+    size: () => { const s = map.getSize(); return { x: s.x, y: s.y }; },
+    toPoint: (p) => map.latLngToContainerPoint([p.lat, p.lon]),
+    toLatLon: (x, y) => { const c = map.containerPointToLatLng([x, y]); return { lat: c.lat, lon: c.lng }; },
+    pin(p, svg, size, onDrag) {
+      const m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'pinwrap', html: svg, iconSize: [size, size], iconAnchor: [size / 2, size / 2] }), draggable: true, zIndexOffset: 1000, title: p.title || '' }).addTo(map);
+      m.on('dragend', () => { const q = m.getLatLng(); onDrag({ lat: q.lat, lon: q.lng }); });
+      return { remove: () => m.remove(), pos: () => { const q = m.getLatLng(); return { lat: q.lat, lon: q.lng }; } };
+    },
+    label(p, html) {
+      const m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'lblwrap', html, iconSize: null, iconAnchor: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: 500 }).addTo(map);
+      return { remove: () => m.remove() };
+    },
+    line(a, b) { const l = L.polyline([[a.lat, a.lon], [b.lat, b.lon]], { color: '#6b7280', weight: 1, interactive: false }).addTo(map); return { remove: () => l.remove() }; },
+    fit(pts) { map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon])), { padding: [50, 50] }); },
+    focus(p) { map.setView([p.lat, p.lon], Math.max(map.getZoom(), 16)); },
+    center() { const c = map.getCenter(); return { lat: c.lat, lon: c.lng }; },
+    relayout() { map.invalidateSize(); },
+    onIdle(fn) { map.on('moveend zoomend resize', fn); },
+    printMode(on) { const z = document.querySelector('.leaflet-control-zoom'); if (z) z.style.display = on ? 'none' : ''; },
+  };
+}
+
+let E = null;
+async function initEngine() {
+  if (KAKAO_KEY) {
+    try {
+      await loadScript(`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_KEY}&libraries=services&autoload=false`);
+      await new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('timeout')), 8000); window.kakao.maps.load(() => { clearTimeout(t); res(); }); });
+      return kakaoEngine();
+    } catch (e) { console.warn('카카오 지도를 못 불러와 OpenStreetMap 으로 엽니다', e); }
+  }
+  return leafletEngine();
+}
+
+// ───────── 핀·이름표 ─────────
+function groupStyles(rows) {
+  const out = {};
+  let i = 0;
+  for (const r of rows) if (!(r.group in out)) out[r.group] = STYLE[i++ % STYLE.length];
+  return out;
+}
+function shapeSvg(st, no, size = 24) {
+  const s = size, c = st.c, t = String(no);
+  const fs = t.length > 2 ? s * 0.35 : s * 0.42;
+  let body;
+  if (st.shape === 'square') body = `<rect x="2.5" y="2.5" width="${s - 5}" height="${s - 5}" rx="3" fill="${c}" stroke="#fff" stroke-width="1.6"/>`;
+  else if (st.shape === 'triangle') body = `<polygon points="${s / 2},1.5 ${s - 1.5},${s - 2.5} 1.5,${s - 2.5}" fill="${c}" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>`;
+  else if (st.shape === 'diamond') body = `<polygon points="${s / 2},1 ${s - 1},${s / 2} ${s / 2},${s - 1} 1,${s / 2}" fill="${c}" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>`;
+  else body = `<circle cx="${s / 2}" cy="${s / 2}" r="${s / 2 - 1.5}" fill="${c}" stroke="#fff" stroke-width="1.6"/>`;
+  const ty = st.shape === 'triangle' ? s * 0.74 : s / 2 + fs * 0.36;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">${body}<text x="${s / 2}" y="${ty}" text-anchor="middle" font-size="${fs}" font-weight="700" font-family="Arial, Helvetica, sans-serif" fill="#fff">${t}</text></svg>`;
+}
+function starSvg(size = 30) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? size * 0.21 : size * 0.48, a = -Math.PI / 2 + (i * Math.PI) / 5;
+    pts.push(`${(size / 2 + r * Math.cos(a)).toFixed(1)},${(size / 2 + r * Math.sin(a)).toFixed(1)}`);
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><polygon points="${pts.join(' ')}" fill="${HOME_COLOR}" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+}
+function shade(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (v) => Math.round(v * 0.62).toString(16).padStart(2, '0');
+  return '#' + f(n >> 16) + f((n >> 8) & 255) + f(n & 255);
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+const measureCtx = document.createElement('canvas').getContext('2d');
+function textW(t, px) { measureCtx.font = `800 ${px}px ${getComputedStyle(document.body).fontFamily}`; return measureCtx.measureText(t).width; }
+// 거의 다 '본점'이면 이름표에서는 뺀다 (제목 줄에 '모두 본점'으로 적는다)
+function dropSuffix() { const n = S.rows.filter((r) => / 본점$/.test(r.name)).length; return S.rows.length && n >= S.rows.length * 0.7; }
+function labelName(r) { return dropSuffix() ? r.name.replace(/ 본점$/, '') : r.name; }
+
+const placed = () => S.rows.filter((r) => r.lat != null);
+let pins = [];
+let labels = [];
+function draw(fit) {
+  pins.forEach((p) => p.h.remove());
+  pins = [];
+  const styles = groupStyles(S.rows);
+  S.rows.forEach((r, i) => { r.no = i + 1; });
+  for (const r of placed()) {
+    const h = E.pin({ lat: r.lat, lon: r.lon, title: r.name }, shapeSvg(styles[r.group], r.no), 24, (q) => {
+      r.lat = q.lat; r.lon = q.lon; r.prec = 'manual'; save(); renderList(); layoutLabels();
+    });
+    pins.push({ h, r, st: styles[r.group], w: 24 });
+  }
+  if (S.home && S.home.lat != null) {
+    const hm = S.home;
+    const h = E.pin({ lat: hm.lat, lon: hm.lon, title: hm.name }, starSvg(30), 30, (q) => { hm.lat = q.lat; hm.lon = q.lon; hm.prec = 'manual'; save(); layoutLabels(); });
+    pins.push({ h, r: { name: '★ ' + (hm.name || '기준점'), home: true }, st: { c: HOME_COLOR }, w: 30 });
+  }
+  if (fit && pins.length) E.fit(pins.map((p) => p.h.pos()));
+  layoutLabels();
+}
+
+// 이름표 배치: 핀과 다른 이름표를 피해 가까운 자리부터 고른다. 멀리 놓이면 선으로 잇는다
+function layoutLabels() {
+  labels.forEach((x) => x.remove());
+  labels = [];
+  if (!pins.length) return;
+  const size = E.size();
+  const fs = 12.5, h = 16;
+  const ps = pins.map((p) => ({ ...p, pos: p.h.pos(), pt: E.toPoint(p.h.pos()) }));
+  const boxes = ps.map((p) => ({ x0: p.pt.x - p.w / 2 - 1, y0: p.pt.y - p.w / 2 - 1, x1: p.pt.x + p.w / 2 + 1, y1: p.pt.y + p.w / 2 + 1 }));
+  const hit = (b) => boxes.reduce((s, o) => s + Math.max(0, Math.min(b.x1, o.x1) - Math.max(b.x0, o.x0)) * Math.max(0, Math.min(b.y1, o.y1) - Math.max(b.y0, o.y0)), 0);
+  const order = ps.map((p, i) => i).sort((a, b) => ps[a].pt.y - ps[b].pt.y);
+  for (const i of order) {
+    const p = ps[i];
+    const text = p.r.home ? p.r.name : labelName(p.r);
+    const size2 = p.r.home ? 14 : fs;
+    const w = textW(text, size2) + 6;
+    const g = p.w / 2 + 3;
+    const cands = [];
+    for (let ring = 0; ring < 9; ring++) {
+      const d = ring * 13;
+      cands.push([g + d, -h / 2], [-g - d - w, -h / 2], [-w / 2, -g - d - h], [-w / 2, g + d],
+        [g + d * 0.7, -g - d * 0.7 - h + 4], [-g - d * 0.7 - w, -g - d * 0.7 - h + 4], [g + d * 0.7, g + d * 0.7 - 4], [-g - d * 0.7 - w, g + d * 0.7 - 4]);
+    }
+    let best = null, bestCost = Infinity;
+    for (const [dx, dy] of cands) {
+      const b = { x0: p.pt.x + dx, y0: p.pt.y + dy, x1: p.pt.x + dx + w, y1: p.pt.y + dy + h };
+      if (b.x0 < 4 || b.y0 < 4 || b.x1 > size.x - 4 || b.y1 > size.y - 4) continue;
+      const cost = hit(b) * 10 + Math.hypot(dx + w / 2, dy + h / 2) * 0.05;
+      if (cost < bestCost) { bestCost = cost; best = { dx, dy, b }; if (cost < 3) break; }
+    }
+    if (!best) best = { dx: g, dy: -h / 2, b: { x0: p.pt.x + g, y0: p.pt.y - h / 2, x1: p.pt.x + g + w, y1: p.pt.y + h / 2 } };
+    boxes.push(best.b);
+    const color = p.r.home ? HOME_COLOR : shade(p.st.c);
+    const at = E.toLatLon(best.b.x0, best.b.y0);
+    labels.push(E.label(at, `<div class="lbl" style="color:${color};font-size:${size2}px">${escapeHtml(text)}</div>`));
+    const cx = Math.max(best.b.x0, Math.min(p.pt.x, best.b.x1)), cy = Math.max(best.b.y0, Math.min(p.pt.y, best.b.y1));
+    if (Math.hypot(cx - p.pt.x, cy - p.pt.y) > p.w / 2 + 8) labels.push(E.line(p.pos, E.toLatLon(cx, cy)));
+  }
+}
+
+// ───────── 왼쪽 목록 ─────────
+const BADGE = { exact: '정확', name: '이름으로 찾음', manual: '직접 지정', near: '확인 필요', none: '못 찾음' };
+function renderList() {
+  const list = $('list');
+  const styles = groupStyles(S.rows);
+  if (!S.rows.length) { list.hidden = true; $('summary').innerHTML = ''; return; }
+  list.hidden = false;
+  let html = '', cur = null;
+  S.rows.forEach((r, i) => {
+    if (r.group !== cur) {
+      cur = r.group;
+      const cnt = S.rows.filter((x) => x.group === cur).length;
+      html += `<div class="grp">${shapeSvg(styles[cur], '', 14)}${escapeHtml(cur)} <span style="color:var(--ink-3);font-weight:600">${cnt}곳</span></div>`;
+    }
+    const b = r.prec || 'none';
+    html += `<div class="item" data-i="${i}"><div>${shapeSvg(styles[r.group], i + 1, 22)}</div><div style="min-width:0"><div class="nm">${escapeHtml(r.name)}</div><div class="ad">${escapeHtml(shortAddr(r.addr))}</div></div>`
+      + `<span class="badge ${b}">${r.prec == null ? '' : BADGE[b]}</span></div>`;
+  });
+  list.innerHTML = html;
+  const c = { ok: 0, warn: 0, bad: 0 };
+  for (const r of S.rows) { if (['exact', 'name', 'manual'].includes(r.prec)) c.ok++; else if (r.prec === 'near') c.warn++; else if (r.prec === 'none') c.bad++; }
+  $('summary').innerHTML = `<span class="chip ok">찾음 ${c.ok}</span>` + (c.warn ? `<span class="chip warn">확인 필요 ${c.warn}</span>` : '') + (c.bad ? `<span class="chip bad">못 찾음 ${c.bad}</span>` : '');
+}
+$('list').addEventListener('click', (e) => {
+  const it = e.target.closest('.item');
+  if (!it || !E) return;
+  const r = S.rows[+it.dataset.i];
+  if (r.lat == null) {
+    const c = E.center();
+    Object.assign(r, { lat: c.lat, lon: c.lon, prec: 'manual' });
+    save(); draw(false); renderList();
+    $('status').textContent = `'${r.name}' 핀을 지도 가운데에 놓았어요. 정확한 자리로 끌어 옮기세요.`;
+    return;
+  }
+  E.focus({ lat: r.lat, lon: r.lon });
+});
+
+// ───────── 실행 ─────────
+async function run() {
+  if (!E) return;
+  const rows = parseInput($('input').value);
+  if (!rows.length) { $('status').textContent = '명단을 읽지 못했어요. 이름과 주소가 한 줄(또는 엑셀 한 행)에 함께 있는지 확인해 주세요.'; return; }
+  // 이미 찾은 곳은 그대로 둔다 (직접 옮긴 핀 유지)
+  const old = new Map(S.rows.map((r) => [r.name + '|' + r.addr, r]));
+  S.rows = rows.map((r) => { const o = old.get(r.name + '|' + r.addr); return o && o.lat != null ? { ...r, lat: o.lat, lon: o.lon, prec: o.prec } : { ...r, lat: null, lon: null, prec: null }; });
+  S.title = $('title').value.trim() || '명단 위치도';
+  S.homeName = $('homeName').value.trim();
+  S.homeAddr = $('homeAddr').value.trim();
+  $('go').disabled = true;
+  renderList();
+  const todo = S.rows.filter((r) => r.lat == null);
+  const homeTodo = S.homeAddr && !(S.home && S.home.addr === S.homeAddr && S.home.lat != null);
+  const total = todo.length + (homeTodo ? 1 : 0);
+  let done = 0;
+  const tick = (msg) => { $('barFill').style.width = (total ? (done / total) * 100 : 100) + '%'; $('status').textContent = msg; };
+  tick(total ? `위치 찾는 중… 0/${total}` : '모두 이미 찾아 둔 곳이에요.');
+  try {
+    for (const r of todo) {
+      const g = await E.locate(r.name, r.addr);
+      Object.assign(r, { lat: g.lat ?? null, lon: g.lon ?? null, prec: g.prec });
+      done++;
+      tick(`위치 찾는 중… ${done}/${total}  ${r.name}`);
+      renderList();
+      save();
+    }
+    if (homeTodo) {
+      const g = await E.locate('', S.homeAddr);
+      S.home = { name: S.homeName || '기준점', addr: S.homeAddr, lat: g.lat ?? null, lon: g.lon ?? null, prec: g.prec };
+      done++;
+    } else if (S.home) S.home.name = S.homeName || S.home.name;
+    if (!S.homeAddr) S.home = null;
+    const warn = S.rows.filter((r) => r.prec === 'near').length, bad = S.rows.filter((r) => r.prec === 'none').length;
+    tick(`${S.rows.length}곳을 지도에 찍었어요.` + (warn ? ` 확인 필요 ${warn}곳은 핀을 끌어 맞춰 주세요.` : '') + (bad ? ` 못 찾은 ${bad}곳은 목록에서 눌러 직접 놓으세요.` : '')
+      + (S.home && S.home.prec === 'near' ? ' 기준점(별)도 위치를 확인해 주세요.' : '') + (S.home && S.home.prec === 'none' ? ' 기준점 주소를 못 찾았어요.' : ''));
+  } catch (e) {
+    tick('위치 검색이 잠시 막혔어요(' + e.message + '). 1분 뒤 다시 누르면 찾은 곳은 건너뛰고 이어서 찾아요.');
+  }
+  save();
+  $('go').disabled = false;
+  $('toPrint').disabled = !placed().length;
+  draw(true);
+}
+
+// ───────── 인쇄 화면 ─────────
+function enterPrint() {
+  const P = PAPER[S.paper];
+  const root = document.documentElement.style;
+  root.setProperty('--sheet-w', P.w + 'mm');
+  root.setProperty('--map-w', P.mapW + 'mm');
+  root.setProperty('--map-h', (P.h - 16 - 18) + 'mm');
+  $('page-size').textContent = `@page { size: ${P.w}mm ${P.h}mm; margin: 0; }`;
+  $('sheetTitle').textContent = S.title;
+  const styles = groupStyles(S.rows);
+  const groups = Object.keys(styles);
+  const counts = groups.map((g) => `${g} ${S.rows.filter((r) => r.group === g).length}`).join('  ·  ');
+  $('sheetSub').textContent = `총 ${S.rows.length}곳  ·  ${counts}` + (dropSuffix() ? '  (모두 본점)' : '') + (S.home ? `    |    ★ ${S.home.name} (${shortAddr(S.home.addr)})` : '');
+  let html = '';
+  for (const g of groups) {
+    const st = styles[g];
+    html += `<div class="g"><div class="gh" style="color:${shade(st.c)}">${shapeSvg(st, '', 13)} ${escapeHtml(g)} (${S.rows.filter((r) => r.group === g).length})</div>`;
+    for (const r of S.rows.filter((x) => x.group === g)) {
+      html += `<div class="r"><span class="no" style="background:${st.c}">${r.no}</span><span class="nm">${escapeHtml(labelName(r))}</span><span class="ad">${escapeHtml(shortAddr(r.addr))}</span></div>`;
+    }
+    html += '</div>';
+  }
+  html += `<div class="src">${E.name === 'kakao' ? '지도·위치: 카카오맵' : '지도 © OpenStreetMap contributors'}</div>`;
+  const list = $('sheetList');
+  list.innerHTML = html;
+  list.style.fontSize = P.listFs + 'pt';
+  list.style.columnCount = S.rows.length > (S.paper === 'A3' ? 38 : 26) ? 2 : 1;
+  document.body.classList.add('print-mode');
+  ['doPrint', 'backEdit', 'paperCtl'].forEach((id) => { $(id).hidden = false; });
+  E.printMode(true);
+  setTimeout(() => { E.relayout(); draw(true); window.scrollTo(0, 0); }, 60);
+}
+function leavePrint() {
+  document.body.classList.remove('print-mode');
+  ['doPrint', 'backEdit', 'paperCtl'].forEach((id) => { $(id).hidden = true; });
+  E.printMode(false);
+  setTimeout(() => { E.relayout(); layoutLabels(); }, 60);
+}
+
+// ───────── 연결 ─────────
+$('go').addEventListener('click', run);
+$('toPrint').addEventListener('click', enterPrint);
+$('backEdit').addEventListener('click', leavePrint);
+$('doPrint').addEventListener('click', () => window.print());
+$('relabel').addEventListener('click', () => layoutLabels());
+$('paper').addEventListener('change', (e) => { S.paper = e.target.value; save(); enterPrint(); });
+$('faded').addEventListener('change', (e) => { S.faded = e.target.checked; document.body.classList.toggle('faded', S.faded); save(); });
+$('title').addEventListener('input', (e) => { S.title = e.target.value; save(); });
+$('input').addEventListener('input', (e) => { S.input = e.target.value; save(); });
+$('clear').addEventListener('click', () => {
+  $('input').value = ''; S.input = ''; S.rows = []; S.home = null; save();
+  if (E) draw(false);
+  renderList(); $('toPrint').disabled = true; $('status').textContent = '지웠어요.';
+});
+$('file').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+    const cells = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false });
+    const text = cells.map((r) => r.map((c) => String(c ?? '').replace(/\t|\n/g, ' ')).join('\t')).join('\n');
+    $('input').value = text; S.input = text; save();
+    $('status').textContent = `'${f.name}'에서 ${parseInput(text).length}곳을 읽었어요. '지도에 찍기'를 누르세요.`;
+  } catch (err) { $('status').textContent = '파일을 읽지 못했어요. 엑셀(.xlsx)이나 CSV 파일인지 확인해 주세요.'; }
+  e.target.value = '';
+});
+const SAMPLE = ['구분\t이름\t주소',
+  '새마을금고\t서전주새마을금고\t전북특별자치도 전주시 완산구 백제대로 391',
+  '새마을금고\t금암새마을금고\t전북특별자치도 전주시 덕진구 기린대로 364',
+  '새마을금고\t중부새마을금고\t전북특별자치도 전주시 완산구 용머리로 151',
+  '신협\t서신신협\t전북특별자치도 전주시 완산구 서신로 24',
+  '신협\t전주중앙신협\t전북특별자치도 전주시 완산구 팔달로 269',
+  '신협\t전주파티마신협\t전북특별자치도 전주시 완산구 홍산로 250'].join('\n');
+$('sample').addEventListener('click', () => {
+  $('input').value = SAMPLE; S.input = SAMPLE; $('title').value = '전주 새마을금고 · 신협 본점 (예시)'; S.title = $('title').value; save();
+  $('status').textContent = `예시 ${parseInput(SAMPLE).length}곳을 넣었어요. '지도에 찍기'를 누르세요.`;
+});
+
+// 처음 열 때: 지도 엔진을 준비하고 저장해 둔 작업을 되살린다
+$('title').value = S.title;
+$('input').value = S.input || '';
+$('homeName').value = S.homeName || '';
+$('homeAddr').value = S.homeAddr || '';
+$('faded').checked = S.faded;
+$('paper').value = S.paper;
+document.body.classList.toggle('faded', S.faded);
+renderList();
+$('go').disabled = true;
+initEngine().then((engine) => {
+  E = engine;
+  $('privacy').textContent = E.privacy;
+  E.onIdle(() => layoutLabels());
+  $('go').disabled = false;
+  if (placed().length) { draw(true); $('toPrint').disabled = false; $('status').textContent = `저장해 둔 ${S.rows.length}곳을 불러왔어요.`; }
+}).catch((e) => { $('status').textContent = '지도를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.'; console.error(e); });
+window.__listmap = { get S() { return S; }, parseInput, cleanAddr, get engine() { return E && E.name; } };
+</script>
+</body>
+</html>
