@@ -27,6 +27,7 @@
   color-scheme: light;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body { font: 14px/1.5 var(--font); color: var(--ink); background: var(--paper); }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -35,6 +36,7 @@ button { cursor: pointer; }
 
 .app { display: grid; grid-template-columns: minmax(320px, 400px) 1fr; height: 100%; }
 .side { display: flex; flex-direction: column; gap: 14px; padding: 16px; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; min-width: 0; }
+.side > * { flex-shrink: 0; }
 .side h1 { margin: 0; font-size: 19px; letter-spacing: -0.02em; }
 .side .lead { margin: 2px 0 0; color: var(--ink-2); font-size: 13px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
@@ -73,7 +75,7 @@ textarea { min-height: 150px; resize: vertical; font-size: 13px; line-height: 1.
 .tools { position: absolute; top: 12px; right: 12px; z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
 .tools label { display: flex; align-items: center; gap: 5px; padding: 6px 10px; background: #fff; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; white-space: nowrap; }
 .tools select { width: auto; padding: 2px 4px; border: 0; }
-.faded #map img:not([src^="data:"]) { filter: grayscale(0.85) brightness(1.06) contrast(0.92); }
+.faded #map img:not([src^="data:"]) { filter: grayscale(1) contrast(0.78) brightness(1.1); }
 .faded #map .leaflet-tile-pane { filter: grayscale(0.85) brightness(1.06) contrast(0.92); }
 
 /* 이름표 */
@@ -104,7 +106,7 @@ body.print-mode .tools { position: fixed; }
 
 @media print {
   .tools { display: none !important; }
-  body.print-mode .mapbox { padding: 0; margin: 0; }
+  body.print-mode .mapbox { padding: 0; margin: 0; width: calc(var(--sheet-w) - 16mm); }
 }
 @media (max-width: 760px) {
   .app { grid-template-columns: 1fr; grid-template-rows: auto 70vh; height: auto; }
@@ -112,7 +114,7 @@ body.print-mode .tools { position: fixed; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
-<style id="page-size">@page { size: 420mm 297mm; margin: 0; }</style>
+<style id="page-size">@page { size: 420mm 297mm; margin: 8mm; }</style>
 </head>
 <body>
 <div class="app">
@@ -174,7 +176,7 @@ body.print-mode .tools { position: fixed; }
 <script>
 'use strict';
 // 카카오 지도 JavaScript 키 (등록한 사이트에서만 작동하는 공개용 키). 비어 있거나 못 불러오면 OpenStreetMap 으로 동작
-const KAKAO_KEY = '';
+const KAKAO_KEY = '394117bd0c419b69da0a7e9213290d49';
 
 const $ = (id) => document.getElementById(id);
 const KEY = 'listmap:v1';
@@ -611,8 +613,8 @@ function enterPrint() {
   const root = document.documentElement.style;
   root.setProperty('--sheet-w', P.w + 'mm');
   root.setProperty('--map-w', P.mapW + 'mm');
-  root.setProperty('--map-h', (P.h - 16 - 18) + 'mm');
-  $('page-size').textContent = `@page { size: ${P.w}mm ${P.h}mm; margin: 0; }`;
+  root.setProperty('--map-h', (P.h - 16 - 20) + 'mm');
+  $('page-size').textContent = `@page { size: ${P.w}mm ${P.h}mm; margin: 8mm; }`;
   $('sheetTitle').textContent = S.title;
   const styles = groupStyles(S.rows);
   const groups = Object.keys(styles);
